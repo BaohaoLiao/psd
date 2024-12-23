@@ -3,7 +3,7 @@ from openai import OpenAI
 
 def main():
     openai_api_key = "EMPTY"
-    penai_api_base = "http://10.141.15.30:8888/v1"
+    openai_api_base = "http://10.141.15.30:8888/v1"
     client = OpenAI(
         api_key=openai_api_key,
         base_url=openai_api_base,
