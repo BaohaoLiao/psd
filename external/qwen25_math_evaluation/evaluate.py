@@ -4,11 +4,11 @@ from tqdm import tqdm
 from pebble import ProcessPool
 from concurrent.futures import TimeoutError
 
-from grader import *
+from .grader import *
 
-from parser import *
-from utils import load_jsonl
-from python_executor import PythonExecutor
+from .parser import *
+from .utils import load_jsonl
+from .python_executor import PythonExecutor
 
 
 def evaluate(data_name, prompt_type, samples: list=None, file_path: str=None, max_num_samples=None, execute=False):
