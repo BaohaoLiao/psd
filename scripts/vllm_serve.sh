@@ -12,7 +12,7 @@ python -m vllm.entrypoints.openai.api_server \
         --port 1234 \
         --host 0.0.0.0 \
         --trust-remote-code \
-        --max-model-len 2048 \
+        --max-model-len 4096 \
         --enforce-eager \
         --enable_prefix_caching \
         --gpu_memory_utilization 0.9
