@@ -145,6 +145,7 @@ def is_multi_choice(answer):
 def get_responses(client, prompts, args, tokenizer):
    outputs = [None] * len(prompts)  # Initialize with None for tracking
    current_prompts = [(i, p, "") for i, p in enumerate(prompts)] # (index, prompt, response)
+   num_turn = 0
    
    while current_prompts:
        batch_prompts = [p+r for _, p, r in current_prompts]
@@ -172,6 +173,9 @@ def get_responses(client, prompts, args, tokenizer):
                next_prompts.append((orig_idx, prompt, full_response)) 
                
        current_prompts = next_prompts
+
+       print("-" * 20, "Number of turns", num_turn)
+       num_turn += 1
        
    return outputs
 
