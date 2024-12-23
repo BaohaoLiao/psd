@@ -2,7 +2,7 @@
 cd /data/chatgpt/data/baliao/psd/01_serve/psd
 
 PROMPT_TYPE="qwen25-math-cot"
-MODEL_NAME_OR_PATH="Qwen2.5-Math-1.5B-Instruct"
+MODEL_NAME_OR_PATH="/mnt/nushare2/data/baliao/PLLMs/qwen/Qwen2.5-Math-1.5B-Instruct"
 OUTPUT_DIR=${MODEL_NAME_OR_PATH}/math_eval
 IP_ADDRESS="http://localhost:1234/v1"
 
