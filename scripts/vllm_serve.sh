@@ -12,8 +12,6 @@ python -m vllm.entrypoints.openai.api_server \
         --port 1234 \
         --host 0.0.0.0 \
         --trust-remote-code \
-        --max-num-batched-tokens 99999 \
-        --max-num-seqs 9999 \
         --max-model-len 2048 \
         --enforce-eager \
         --enable_prefix_caching \
