@@ -111,8 +111,6 @@ def setup(args):
         api_key=openai_api_key,
         base_url=args.ip_address,
     )
-    #tokenizer = None
-    #if args.apply_chat_template:
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, trust_remote_code=True)
 
     # infer & eval
