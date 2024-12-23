@@ -3,7 +3,7 @@
 PROMPT_TYPE="qwen25-math-cot"
 MODEL_NAME_OR_PATH="Qwen2.5-Math-1.5B-Instruct"
 OUTPUT_DIR=${MODEL_NAME_OR_PATH}/math_eval
-IP_ADDRESS=""
+IP_ADDRESS="http://localhost:1234/v1"
 
 SPLIT="test"
 NUM_TEST_SAMPLE=-1
