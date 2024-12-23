@@ -174,7 +174,9 @@ def get_responses(client, prompts, args, tokenizer):
                
        current_prompts = next_prompts
 
-       print("-" * 20, "Number of turns", num_turn)
+       print("-" * 20)
+       print("Number of turns:", num_turn)
+       print(f"Complete {len(outputs) - len(current_prompts)} / {len(outputs)}")
        num_turn += 1
        
    return outputs
