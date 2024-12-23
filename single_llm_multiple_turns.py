@@ -160,11 +160,10 @@ def get_responses(client, prompts, args, tokenizer):
        ).choices
        
        responses = sorted(responses, key=lambda x: int(x.index))
-       #texts = [r.text for r in responses]
        
        next_prompts = []
        for (orig_idx, prompt, response), new_response in zip(current_prompts, responses):
-           # terminate confitions
+           # terminate conditions
            full_response = response + new_response.text + args.step_word  # step_word doesn't show in the response.
            if (new_response.stop_reason is None) \
             or len(tokenizer.encode(prompt+full_response)) >= args.max_tokens_per_call:
