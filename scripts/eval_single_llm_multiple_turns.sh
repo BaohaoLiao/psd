@@ -1,4 +1,5 @@
 #!/bin/bash
+cd /data/chatgpt/data/baliao/psd/01_serve/psd
 
 PROMPT_TYPE="qwen25-math-cot"
 MODEL_NAME_OR_PATH="Qwen2.5-Math-1.5B-Instruct"
@@ -11,7 +12,7 @@ NUM_TEST_SAMPLE=-1
 # English open datasets
 DATA_NAME="math500"
 TOKENIZERS_PARALLELISM=false \
-python3 -u single_llm.py \
+python3 -u single_llm_multiple_turns.py \
     --data_name ${DATA_NAME} \
     --data_dir "./external/qwen25_math_evaluation/data" \
     --model_name_or_path ${MODEL_NAME_OR_PATH} \
