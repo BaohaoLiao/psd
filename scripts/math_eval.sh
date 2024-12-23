@@ -26,6 +26,5 @@ python3 -u single_llm.py \
     --top_p 1 \
     --start 0 \
     --end -1 \
-    --use_vllm \
     --save_outputs \
     --overwrite \
