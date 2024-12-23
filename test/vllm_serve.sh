@@ -14,5 +14,5 @@ python -m vllm.entrypoints.openai.api_server \
         --trust-remote-code \
         --max-num-batched-tokens 99999 \
         --max-num-seqs 9999 \
-        --max-model-len 32768 \
+        --max-model-len 4096 \
         --enforce-eager
