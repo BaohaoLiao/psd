@@ -164,7 +164,7 @@ def get_responses(client, prompts, args, tokenizer):
            # terminate conditions
            full_response = response + new_response.text + args.step_word  # step_word doesn't show in the response.
            if (new_response.stop_reason is None) \
-            or len(tokenizer.encode(full_response)) >= args.max_tokens_per_call:
+            or len(tokenizer.encode(prompt+full_response)) >= args.max_tokens_per_call:
                outputs[orig_idx] = response + new_response.text
            else:
                next_prompts.append((orig_idx, prompt, full_response)) 

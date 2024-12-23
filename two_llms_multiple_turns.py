@@ -109,17 +109,23 @@ def prepare_data(data_name, args):
 def setup(args):
     # load model
     openai_api_key = "EMPTY"
-    client = OpenAI(
+    client1 = OpenAI(
         api_key=openai_api_key,
-        base_url=args.ip_address,
+        base_url=args.llm1_ip_address,
     )
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, trust_remote_code=True)
+    tokenizer1 = AutoTokenizer.from_pretrained(args.llm1_name_or_path, trust_remote_code=True)
+
+    client2 = OpenAI(
+        api_key=openai_api_key,
+        base_url=args.llm2_ip_address,
+    )
+    tokenizer2 = AutoTokenizer.from_pretrained(args.llm2_name_or_path, trust_remote_code=True)
 
     # infer & eval
     data_list = args.data_names.split(",")
     results = []
     for data_name in data_list:
-        results.append(main(client, tokenizer, data_name, args))
+        results.append(main(client1, client2, tokenizer1, tokenizer2, data_name, args))
 
     # add "avg" result to data_list and results
     data_list.append("avg")
@@ -142,7 +148,7 @@ def is_multi_choice(answer):
     return True
 
 
-def get_responses(client, prompts, args, tokenizer):
+def get_responses(client1, client2, prompts, args, tokenizer1, tokenizer2):
    outputs = [None] * len(prompts)  # Initialize with None for tracking
    current_prompts = [(i, p, "") for i, p in enumerate(prompts)] # (index, prompt, response)
    num_turn = 0
@@ -181,7 +187,7 @@ def get_responses(client, prompts, args, tokenizer):
    return outputs
 
 
-def main(client, tokenizer, data_name, args):
+def main(client1, client2, tokenizer1, tokenizer2, data_name, args):
     examples, processed_samples, out_file = prepare_data(data_name, args)
     print("=" * 50)
     print("data:", data_name, " ,remain samples:", len(examples))
@@ -244,7 +250,7 @@ def main(client, tokenizer, data_name, args):
     ]
     if args.apply_chat_template:
         input_prompts = [
-            tokenizer.apply_chat_template(
+            tokenizer1.apply_chat_template(
                 [{"role": "user", "content": prompt.strip()}],
                 tokenize=False,
                 add_generation_prompt=True,
@@ -282,7 +288,7 @@ def main(client, tokenizer, data_name, args):
 
         # get all outputs
         prompts = [item[1] for item in current_prompts]
-        outputs = get_responses(client, prompts, args, tokenizer)
+        outputs = get_responses(client1, client2, prompts, args, tokenizer1, tokenizer2)
         assert len(outputs) == len(current_prompts)
 
         # process all outputs
