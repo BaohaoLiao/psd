@@ -14,7 +14,7 @@ NUM_TEST_SAMPLE=-1
 # English open datasets
 DATA_NAME="math500"
 TOKENIZERS_PARALLELISM=false \
-python3 -u two_llm_multiple_turns.py \
+python3 -u two_llms_multiple_turns.py \
     --data_name ${DATA_NAME} \
     --data_dir "./external/qwen25_math_evaluation/data" \
     --llm1_name_or_path ${LLM1_NAME_OR_PATH} \
