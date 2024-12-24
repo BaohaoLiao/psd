@@ -76,8 +76,6 @@ def prepare_data(data_name, args):
     examples = examples[args.start : len(examples) if args.end == -1 else args.end]
 
     # get out_file name
-    dt_string = datetime.now().strftime("%m-%d_%H-%M")
-    model_name = "/".join(args.model_name_or_path.split("/")[-2:])
     out_file_prefix = f"{args.split}_{args.prompt_type}_{args.num_test_sample}_seed{args.seed}_t{args.temperature}"
     output_dir = args.output_dir
     if not os.path.exists(output_dir):
@@ -162,7 +160,7 @@ def get_responses(args, client1, client2, tokenizer1, tokenizer2, prompts):
 
         batch_prompts = [p + ''.join(r[0] for r in responses) for _, p, responses in current_prompts]
         responses = client.completions.create(
-            model=args.model_name_or_path.split("/")[-1],
+            model=args.llm1_name_or_path.split("/")[-1] if client == client1 else args.llm2_name_or_path.split("/")[-1],
             prompt=batch_prompts,
             temperature=args.temperature,
             top_p=args.top_p, 
