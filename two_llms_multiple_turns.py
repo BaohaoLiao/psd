@@ -148,43 +148,65 @@ def is_multi_choice(answer):
     return True
 
 
-def get_responses(client1, client2, prompts, args, tokenizer1, tokenizer2):
-   outputs = [None] * len(prompts)  # Initialize with None for tracking
-   current_prompts = [(i, p, "") for i, p in enumerate(prompts)] # (index, prompt, response)
-   num_turn = 0
+def get_responses(args, client1, client2, tokenizer1, tokenizer2, prompts):
+    outputs = [None] * len(prompts)  # Initialize with None for tracking
+    token_counts = [(0, 0) for _ in prompts]  # (client1_tokens, client2_tokens) for each prompt
+    turn_info = [[] for _ in prompts]  # List to store (turn_num, client_id) for each prompt
+    current_prompts = [(i, p, []) for i, p in enumerate(prompts)] # (index, prompt, responses)
+    num_turn = 0
    
-   while current_prompts:
-       batch_prompts = [p+r for _, p, r in current_prompts]
-       responses = client.completions.create(
-           model=args.model_name_or_path.split("/")[-1],
-           prompt=batch_prompts,
-           temperature=args.temperature,
-           top_p=args.top_p, 
-           max_tokens=args.max_tokens_per_call,
-           n=1,
-           stop=[args.step_word],
-       ).choices
-       
-       responses = sorted(responses, key=lambda x: int(x.index))
-       
-       next_prompts = []
-       for (orig_idx, prompt, response), new_response in zip(current_prompts, responses):
-           # terminate conditions
-           full_response = response + new_response.text + args.step_word  # step_word doesn't show in the response.
-           if (new_response.stop_reason is None) \
-            or len(tokenizer.encode(prompt+full_response)) >= args.max_tokens_per_call:
-               outputs[orig_idx] = response + new_response.text
-           else:
-               next_prompts.append((orig_idx, prompt, full_response)) 
-               
-       current_prompts = next_prompts
+    while current_prompts:
+        client = client1 if num_turn % 2 == 0 else client2
+        tokenizer = tokenizer1 if num_turn % 2 == 0 else tokenizer2
+        client_id = 1 if num_turn % 2 == 0 else 2
 
-       print("-" * 20)
-       print("Number of turns:", num_turn)
-       print(f"Complete {len(outputs) - len(current_prompts)} / {len(outputs)}")
-       num_turn += 1
+        batch_prompts = [p + ''.join(r[0] for r in responses) for _, p, responses in current_prompts]
+        responses = client.completions.create(
+            model=args.model_name_or_path.split("/")[-1],
+            prompt=batch_prompts,
+            temperature=args.temperature,
+            top_p=args.top_p, 
+            max_tokens=args.max_tokens_per_call,
+            n=1,
+            stop=[args.step_word],
+        ).choices
+        responses = sorted(responses, key=lambda x: int(x.index))
        
-   return outputs
+        next_prompts = []
+        for (orig_idx, prompt, prev_responses), new_response in zip(current_prompts, responses):
+            response_text = new_response.text + args.step_word # response.text doesn't contain step_word
+            num_tokens = len(tokenizer.encode(response_text))
+
+            # Update token counts
+            if client_id == 1:
+                token_counts[orig_idx] = (token_counts[orig_idx][0] + num_tokens, token_counts[orig_idx][1])
+            else:
+                token_counts[orig_idx] = (token_counts[orig_idx][0], token_counts[orig_idx][1] + num_tokens)
+
+            # Record turn information
+            turn_info[orig_idx].append((num_turn, client_id))
+
+            full_responses = prev_responses + [(response_text, client_id)]
+            full_responses_text = ''.join(r[0] for r in full_responses)
+            # terminate conditions
+            if (new_response.stop_reason is None) \
+              or len(tokenizer.encode(prompt + full_responses_text)) >= args.max_tokens_per_call:
+                outputs[orig_idx] = full_responses_text[:-len(args.step_word)]
+            else:
+                next_prompts.append((orig_idx, prompt, full_responses)) 
+               
+        current_prompts = next_prompts
+        print(f"Turn {num_turn}: Complete {len(outputs) - len(current_prompts)} / {len(outputs)}")
+        num_turn += 1
+
+    # Calculate overall ratio
+    total_client1 = sum(counts[0] for counts in token_counts)
+    total_client2 = sum(counts[1] for counts in token_counts)
+    total_tokens = total_client1 + total_client2
+    overall_ratio = (total_client1/total_tokens, total_client2/total_tokens) if total_tokens > 0 else (0,0)
+    print(f"Token ratio (client1, client2): {overall_ratio}")
+
+    return outputs, token_counts, turn_info
 
 
 def main(client1, client2, tokenizer1, tokenizer2, data_name, args):
@@ -288,7 +310,14 @@ def main(client1, client2, tokenizer1, tokenizer2, data_name, args):
 
         # get all outputs
         prompts = [item[1] for item in current_prompts]
-        outputs = get_responses(client1, client2, prompts, args, tokenizer1, tokenizer2)
+        outputs, token_counts, turn_info = get_responses(
+            args,
+            client1, 
+            client2,
+            tokenizer1, 
+            tokenizer2, 
+            prompts, 
+        )
         assert len(outputs) == len(current_prompts)
 
         # process all outputs
