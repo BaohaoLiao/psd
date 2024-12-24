@@ -14,6 +14,7 @@ from external.qwen25_math_evaluation.parser import *
 from external.qwen25_math_evaluation.trajectory import *
 from external.qwen25_math_evaluation.data_loader import load_data
 from external.qwen25_math_evaluation.python_executor import PythonExecutor
+from external.skywork_o1_prm_inference.model_utils.io_utils import prepare_input, derive_step_rewards_vllm
 
 
 def parse_args():
@@ -43,6 +44,7 @@ def parse_args():
     parser.add_argument("--use_safetensors", action="store_true")
     parser.add_argument("--num_shots", type=int, default=0)
     parser.add_argument("--step_word", type=str, default="\n\n")
+    parser.add_argument("--prm_threshold", type=float, default=0.5)
     parser.add_argument(
         "--apply_chat_template",
         action="store_true",
@@ -121,11 +123,17 @@ def setup(args):
     )
     tokenizer2 = AutoTokenizer.from_pretrained(args.llm2_name_or_path, trust_remote_code=True)
 
+    prm = OpenAI(
+        api_key=openai_api_key,
+        base_url=args.prm_ip_address,
+    )
+    tokenizer_prm = AutoTokenizer.from_pretrained(args.prm_model_path, trust_remote_code=True)
+
     # infer & eval
     data_list = args.data_names.split(",")
     results = []
     for data_name in data_list:
-        results.append(main(client1, client2, tokenizer1, tokenizer2, data_name, args))
+        results.append(main(client1, client2, prm, tokenizer1, tokenizer2, tokenizer_prm, data_name, args))
 
     # add "avg" result to data_list and results
     data_list.append("avg")
@@ -148,7 +156,7 @@ def is_multi_choice(answer):
     return True
 
 
-def get_responses(args, client1, client2, tokenizer1, tokenizer2, prompts):
+def get_responses(args, client1, client2, prm, tokenizer1, tokenizer2, tokenizer_prm, prompts):
     outputs = [None] * len(prompts)  # Initialize with None for tracking
     token_counts = [(0, 0) for _ in prompts]  # (client1_tokens, client2_tokens) for each prompt
     turn_info = [[] for _ in prompts]  # List to store (turn_num, client_id) for each prompt
@@ -156,44 +164,87 @@ def get_responses(args, client1, client2, tokenizer1, tokenizer2, prompts):
     num_turn = 0
    
     while current_prompts:
-        client = client1 if num_turn % 2 == 0 else client2
-        tokenizer = tokenizer1 if num_turn % 2 == 0 else tokenizer2
-        client_id = 1 if num_turn % 2 == 0 else 2
-
         batch_prompts = [p + ''.join(r[0] for r in responses) for _, p, responses in current_prompts]
-        responses = client.completions.create(
-            model=args.llm1_name_or_path.split("/")[-1] if client == client1 else args.llm2_name_or_path.split("/")[-1],
+
+        responses1 = client1.completions.create(
+            model=args.llm1_name_or_path.split("/")[-1],
             prompt=batch_prompts,
             temperature=args.temperature,
-            top_p=args.top_p, 
+            top_p=args.top_p,
             max_tokens=args.max_tokens_per_call,
             n=1,
             stop=[args.step_word],
         ).choices
-        responses = sorted(responses, key=lambda x: int(x.index))
-       
-        next_prompts = []
-        for (orig_idx, prompt, prev_responses), new_response in zip(current_prompts, responses):
-            response_text = new_response.text + args.step_word # response.text doesn't contain step_word
-            num_tokens = len(tokenizer.encode(response_text))
+        responses1 = sorted(responses1, key=lambda x: int(x.index))
 
+        # Evaluate responses from client1 with PRM
+        full_responses = [''.join(r[0] for r in prev_resp) + new_resp.text 
+                      for (_, _, prev_resp), new_resp in zip(current_prompts, responses1)]
+        processed_data = [
+            prepare_input(p, full_resp, tokenizer=tokenizer, step_token=args.step_word) 
+            for (_, p, _), full_resp in zip(current_prompts, full_responses)
+        ]
+        input_ids, steps, reward_flags = zip(*processed_data)
+        rewards = prm.embeddings.create(
+            input=input_ids,
+            model=args.prm_name_or_path.split("/")[-1],
+        )
+        step_rewards = derive_step_rewards_vllm(rewards, reward_flags) # list[list]
+
+        # Split prompts based on step_reward
+        good_prompts = []
+        bad_prompts = []
+        for (orig_idx, prompt, prev_responses), response1, step_reward in zip(current_prompts, responses1, step_rewards):
+            if step_reward[-1] >= args.prm_threshold:
+                good_prompts.append((orig_idx, prompt, prev_responses, response1, True))  # True means use client1
+            else:
+                bad_prompts.append((orig_idx, prompt, prev_responses))
+
+        # Generate responses using client2 for bad prompts
+        if bad_prompts:
+            batch_prompts = [p + ''.join(r[0] for r in responses) for _, p, responses in bad_prompts]
+            responses2 = client2.completions.create(
+                model=args.llm2_name_or_path.split("/")[-1],
+                prompt=batch_prompts,
+                temperature=args.temperature,
+                top_p=args.top_p,
+                max_tokens=args.max_tokens_per_call,
+                n=1,
+                stop=[args.step_word],
+            ).choices
+            responses2 = sorted(responses2, key=lambda x: int(x.index))
+            
+            # Add client2 responses to good_prompts
+            for (orig_idx, prompt, prev_responses), response2 in zip(bad_prompts, responses2):
+                good_prompts.append((orig_idx, prompt, prev_responses, response2, False))  # False means use client2
+
+        # Process all responses
+        next_prompts = []
+        for orig_idx, prompt, prev_responses, response, used_client1 in sorted(good_prompts, key=lambda x: x[0]):
+            response_text = response.text + args.step_word
+            client_id = 1 if used_client1 else 2
+            tokenizer = tokenizer1 if client_id == 1 else tokenizer2
+            num_tokens = len(tokenizer.encode(response_text))
+            
             # Update token counts
             if client_id == 1:
                 token_counts[orig_idx] = (token_counts[orig_idx][0] + num_tokens, token_counts[orig_idx][1])
             else:
                 token_counts[orig_idx] = (token_counts[orig_idx][0], token_counts[orig_idx][1] + num_tokens)
-
+            
             # Record turn information
             turn_info[orig_idx].append((num_turn, client_id))
 
             full_responses = prev_responses + [(response_text, client_id)]
             full_responses_text = ''.join(r[0] for r in full_responses)
+            
             # terminate conditions
-            if (new_response.stop_reason is None) \
-              or len(tokenizer.encode(prompt + full_responses_text)) >= args.max_tokens_per_call:
+            if (response.stop_reason is None) \
+             or len(tokenizer1.encode(prompt + full_responses_text)) >= args.max_tokens_per_call \
+             or len(tokenizer2.encode(prompt + full_responses_text)) >= args.max_tokens_per_call:
                 outputs[orig_idx] = full_responses_text[:-len(args.step_word)]
             else:
-                next_prompts.append((orig_idx, prompt, full_responses)) 
+                next_prompts.append((orig_idx, prompt, full_responses))
                
         current_prompts = next_prompts
         print(f"Turn {num_turn}: Complete {len(outputs) - len(current_prompts)} / {len(outputs)}")
@@ -205,11 +256,10 @@ def get_responses(args, client1, client2, tokenizer1, tokenizer2, prompts):
     total_tokens = total_client1 + total_client2
     overall_ratio = (total_client1/total_tokens, total_client2/total_tokens) if total_tokens > 0 else (0,0)
     print(f"Token ratio (client1, client2): {overall_ratio}")
-
     return outputs, token_counts, turn_info
 
 
-def main(client1, client2, tokenizer1, tokenizer2, data_name, args):
+def main(client1, client2, prm, tokenizer1, tokenizer2, tokenizer_prm, data_name, args):
     examples, processed_samples, out_file = prepare_data(data_name, args)
     print("=" * 50)
     print("data:", data_name, " ,remain samples:", len(examples))
@@ -314,8 +364,10 @@ def main(client1, client2, tokenizer1, tokenizer2, data_name, args):
             args,
             client1, 
             client2,
+            prm,
             tokenizer1, 
-            tokenizer2, 
+            tokenizer2,
+            tokenizer_prm,
             prompts, 
         )
         assert len(outputs) == len(current_prompts)
