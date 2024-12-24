@@ -401,7 +401,7 @@ def main(client1, client2, tokenizer1, tokenizer2, data_name, args):
         sample.pop("prompt")
         sample.update(
             {"code": code, "pred": preds, "report": reports, 
-             "token_counts": token_counts, "turn_info": turn_info}
+             "token_counts": token_counts[i], "turn_info": turn_info[i]}
         )
         all_samples.append(sample)
 
